@@ -1,0 +1,2 @@
+#!/usr/bin/php
+include dirname(__FILE__) . '/git-ftp.php';
