@@ -4,8 +4,6 @@ ini_set('default_charset', 'utf-8');
 ini_set('date.timezone', 'Europe/Moscow');
 ini_set('memory_limit', -1);
 ini_set('html_errors', 0);
-// $ErrorLogFile = __DIR__ . '/php-error-log.txt';
-// ini_set('error_log', $ErrorLogFile);
 set_error_handler('ErrorHandler', -1);
 set_exception_handler('ErrorHandler');
 
@@ -132,7 +130,7 @@ ftp_close($Resource);
 function ErrorHandler($No, $Message, $File, $Line, $Globals = Null) {
 	$Exception =& $Globals['No'];
 	if ($Exception instanceof Exception) {
-		error_log($Exception);
+		error_log($Exception, 3, __DIR__ . '/error.log');
 		ConsoleMessage('ERROR: %s', $Exception->GetMessage());
 		echo $Exception;
 		sleep(30);
@@ -175,7 +173,9 @@ function ConsoleMessage() {
 	$Count = substr_count($Message, '%');
 	if ($Count != count($Args) - 1) $Message = str_replace('%', '%%', $Message);
 	$Message = call_user_func_array('sprintf', $Args);
-	if ($Encoding && $Encoding != 'utf-8') $Message = mb_convert_encoding($Message, $Encoding, 'utf-8');
+	if ($Encoding && $Encoding != 'utf-8' && function_exists('mb_convert_encoding')) {
+		$Message = mb_convert_encoding($Message, $Encoding, 'utf-8');
+	}
 	$S = TimeSeconds() . ' -!- ' . $Message;
 	if (substr($S, -1, 1) != "\n") $S .= "\n";
 	fwrite(STDOUT, $S);
