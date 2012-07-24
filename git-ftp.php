@@ -1,4 +1,11 @@
 <?php
+/**
+ * Version 1.0.1
+ * Changelog:
+ * 1.0.0 - First release
+ * 1.1.0 - Added submodule support
+ */
+
 error_reporting(-1);
 ini_set('default_charset', 'utf-8');
 ini_set('date.timezone', 'Europe/Moscow');
@@ -7,11 +14,8 @@ ini_set('html_errors', 0);
 set_error_handler('ErrorHandler', -1);
 set_exception_handler('ErrorHandler');
 
-//$Type = GetTypeCommand($_SERVER['argv']);
-
 // x: - requred, x:: - optional
 $Options = getopt('u:p:l:r::');
-
 $Url = GetValue('l', $Options);
 $components = parse_url($Url);
 $FtpUser = $Options['u'];
@@ -27,14 +31,11 @@ if (!file_exists("$Repository/.git")) {
 	trigger_error("Looks like '$Repository' is not git repository.");
 }
 
-unset($Output, $ReturnVar);
 $Result = exec("git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" status", $Output, $ReturnVar);
 if ($Result != 'nothing to commit (working directory clean)') {
 	ConsoleMessage('ERROR: Working directory is dirty.');
 	exit(1);
 }
-
-trigger_error("Unknown operation 'XXXXXXXX'.");
 
 ConsoleMessage('Connecting to ftp: %s', $FtpHost);
 if ($SecureConnection) {
@@ -54,37 +55,64 @@ if ($DirectoryList === FALSE) {
 	ftp_mkdir_recursive($Resource, $FtpUrlPath);
 }
 
-$ServerLastCommitHash = FALSE;
-$TmpfileResource = tmpfile();
-try {
-	ftp_fget($Resource, $TmpfileResource, "$FtpUrlPath/.git-ftp.log", FTP_ASCII);
-	fseek($TmpfileResource, 0);
-	$ServerLastCommitHash = fread($TmpfileResource, 40);
-} catch (Exception $Exception) {
-	ConsoleMessage($Exception->GetMessage());
-}
-
+$ServerLastCommits = array();
+$ServerLastCommitHash = GetServerLastCommitHash($Resource, $FtpUrlPath);
+$UploadList = GetDiffFiles($Repository, $ServerLastCommitHash);
 $LocalLastCommitHash = exec("git --git-dir=\"$Repository/.git\" rev-parse HEAD", $Output, $ReturnVar);
+$ServerLastCommits[] = array(
+	'Path' => $FtpUrlPath,
+	'Hash' => $LocalLastCommitHash
+);
 
-unset($Output, $ReturnVar);
+// Cheking modules.
+$Command = "git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" ls-tree -r HEAD | grep commit";
+exec($Command, $Commits, $ReturnVar);
+$Submodules = array();
+foreach ($Commits as $CommitString) {
+	$CommitRow = explode(' ', $CommitString);
+	if ($CommitRow[1] != 'commit') continue;
+	$CommitRow[3] = substr($CommitRow[2], 0, 40);
+	$CommitRow[4] = trim(substr($CommitRow[2], 40));
+	$Sha1 = $CommitRow[3];
+	$Path = $CommitRow[4];
 
-if ($ServerLastCommitHash === FALSE) {
-	// First upload.
-	$Command = "git --git-dir=\"$Repository/.git\" ls-files";
-	exec($Command, $UploadList, $ReturnVar);
-} else {
-	$Command = "git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" diff --name-status $ServerLastCommitHash";
-	exec($Command, $UploadList, $ReturnVar);
+	$Submodules[$Path] = $Sha1;
+
+	$LocalHash = exec("git --git-dir=\"$Repository/$Path/.git\" rev-parse HEAD");
+	$ServerHash = GetServerLastCommitHash($Resource, "$FtpUrlPath/$Path");
+
+	if ($LocalHash != $ServerHash) {
+		$ServerLastCommits[] = array(
+			'Path' => "$FtpUrlPath/$Path",
+			'Hash' => $LocalHash
+		);
+		$ModuleUploadList = GetDiffFiles("$Repository/$Path", $ServerHash);
+		foreach ($ModuleUploadList as $Filepath) {
+			$Filepath = substr_replace($Filepath, "$Path/", 2, 0);
+			$UploadList[] = $Filepath;
+		}
+	}
 }
 
 foreach ($UploadList as $FileStatus) {
-	$Operation = substr($FileStatus, 0, 1);
-	$FilePath = substr($FileStatus, 2);
-	$DirectoryPath = dirname($FilePath);
+	if ($ServerLastCommitHash !== FALSE) {
+		$Filepath = substr($FileStatus, 2);
+		$Operation = substr($FileStatus, 0, 1);
+	} else {
+		$Filepath = $FileStatus;
+		$Operation = 'A';
+	}
 
-	$RemoteFile = "$FtpUrlPath/$FilePath";
-	$LocalFile = "$Repository/$FilePath";
+	if (GetValue($Filepath, $Submodules, FALSE, TRUE)) {
+		continue;
+	}
 
+	$DirectoryPath = dirname($Filepath);
+
+	$RemoteFile = "$FtpUrlPath/$Filepath";
+	$LocalFile = "$Repository/$Filepath";
+
+	//try {
 	switch ($Operation) {
 		case 'A':
 		case 'M':
@@ -95,36 +123,33 @@ foreach ($UploadList as $FileStatus) {
 				}
 			}
 			ftp_put($Resource, $RemoteFile, $LocalFile, FTP_BINARY);
-			ConsoleMessage('Uploaded file: %s', $FilePath);
+			ConsoleMessage('Uploaded file: %s', $Filepath);
 		break;
 		
 		case 'D':
 			ftp_delete($Resource, $RemoteFile);
-			ConsoleMessage('Deleted file: %s', $FilePath);
+			ConsoleMessage('Deleted file: %s', $Filepath);
 		break;
 
 		default:
 			trigger_error("Unknown operation '$Operation'.");
 			break;
 	}
-
-
-	// if (!file_exists($LocalFile)) {
+	// } catch (Exception $Ex) {
+	// 	ConsoleMessage($Ex->GetMessage());
 	// }
-
-
 }
 
-ConsoleMessage("Uploading .git-ftp.log");
-$TmpfileResource = tmpfile();
-fwrite($TmpfileResource, $LocalLastCommitHash);
-fseek($TmpfileResource, 0);
-ftp_fput($Resource, "$FtpUrlPath/.git-ftp.log", $TmpfileResource, FTP_ASCII);
+ConsoleMessage("Uploading .git-ftp.log files.");
+foreach ($ServerLastCommits as $Data) {
+	$Path = $Data['Path'];
+	$Hash = $Data['Hash'];
+	UploadLocalCommitHash($Resource, $Path, $Hash);
+	ConsoleMessage("Uploaded %s (%s)", $Path, $Hash);
+}
 
 ConsoleMessage("Closing connection.");
 ftp_close($Resource);
-
-
 
 
 function ErrorHandler($No, $Message, $File, $Line, $Globals = Null) {
@@ -137,6 +162,43 @@ function ErrorHandler($No, $Message, $File, $Line, $Globals = Null) {
 		exit(1);
 	}
 	throw new ErrorException($Message, 0, $No, $File, $Line);
+}
+
+
+function GetDiffFiles($Repository, $ServerLastCommitHash) {
+	if ($ServerLastCommitHash === FALSE) {
+		// First upload.
+		$Command = "git --git-dir=\"$Repository/.git\" ls-files";
+		exec($Command, $UploadList, $ReturnVar);
+		$UploadList = array_map(function($Filepath){
+			return 'A ' . $Filepath;
+		}, $UploadList);
+	} else {
+		$Command = "git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" diff --name-status $ServerLastCommitHash";
+		exec($Command, $UploadList, $ReturnVar);
+	}
+	return $UploadList;
+}
+
+
+function UploadLocalCommitHash($Resource, $FtpUrlPath, $LocalLastCommitHash) {
+	$TmpfileResource = tmpfile();
+	fwrite($TmpfileResource, $LocalLastCommitHash);
+	fseek($TmpfileResource, 0);
+	ftp_fput($Resource, "$FtpUrlPath/.git-ftp.log", $TmpfileResource, FTP_ASCII);
+}
+
+function GetServerLastCommitHash($Resource, $FtpUrlPath) {
+	$ServerLastCommitHash = FALSE;
+	$TmpfileResource = tmpfile();
+	try {
+		ftp_fget($Resource, $TmpfileResource, "$FtpUrlPath/.git-ftp.log", FTP_ASCII);
+		fseek($TmpfileResource, 0);
+		$ServerLastCommitHash = fread($TmpfileResource, 40);
+	} catch (Exception $Exception) {
+		ConsoleMessage($Exception->GetMessage());
+	}
+	return $ServerLastCommitHash;
 }
 
 /**
@@ -211,6 +273,7 @@ function GetTypeCommand(&$Args) {
 
 function d() {
 	$i = 1;
+	$Args = func_get_args();
 	ob_start();
 	foreach ($Args as $A) {
 		echo str_repeat('*', $i++) . ' ';
