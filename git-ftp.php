@@ -1,6 +1,6 @@
 <?php
 /**
- * Version 1.0.1
+ * Version 1.1.1
  * Changelog:
  * 1.0.0 - First release
  * 1.1.0 - Added submodule support
@@ -95,13 +95,8 @@ foreach ($Commits as $CommitString) {
 }
 
 foreach ($UploadList as $FileStatus) {
-	if ($ServerLastCommitHash !== FALSE) {
-		$Filepath = substr($FileStatus, 2);
-		$Operation = substr($FileStatus, 0, 1);
-	} else {
-		$Filepath = $FileStatus;
-		$Operation = 'A';
-	}
+	$Filepath = trim(substr($FileStatus, 2));
+	$Operation = substr($FileStatus, 0, 1);
 
 	if (GetValue($Filepath, $Submodules, FALSE, TRUE)) {
 		continue;
