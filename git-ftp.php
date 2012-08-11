@@ -1,9 +1,11 @@
 <?php
 /**
- * Version 1.1.1
+ * Version 1.1.3
  * Changelog:
  * 1.0.0 - First release
  * 1.1.0 - Added submodule support
+ * 1.1.2 - Added silent option
+ * 1.1.3 - Fixed ftp_mkdir_recursive() function
  */
 
 error_reporting(-1);
@@ -15,7 +17,7 @@ set_error_handler('ErrorHandler', -1);
 set_exception_handler('ErrorHandler');
 
 // x: - requred, x:: - optional
-$Options = getopt('u:p:l:r::');
+$Options = getopt('u:p:l:r::s::');
 $Url = GetValue('l', $Options);
 $components = parse_url($Url);
 $FtpUser = $Options['u'];
@@ -25,6 +27,7 @@ $FtpUrlPath = $components['path'];
 $FtpUrlPath = rtrim($FtpUrlPath, '/');
 $SecureConnection = (GetValue('scheme', $components) == 'sftp');
 $Repository = GetValue('r', $Options);
+$Silent = array_key_exists('s', $Options);
 if (!$Repository) $Repository = getcwd();
 $Repository = rtrim($Repository, '/');
 if (!file_exists("$Repository/.git")) {
@@ -107,32 +110,33 @@ foreach ($UploadList as $FileStatus) {
 	$RemoteFile = "$FtpUrlPath/$Filepath";
 	$LocalFile = "$Repository/$Filepath";
 
-	//try {
-	switch ($Operation) {
-		case 'A':
-		case 'M':
-			if ($DirectoryPath != '.') {
-				$bCreated = ftp_mkdir_recursive($Resource, "$FtpUrlPath/$DirectoryPath");
-				if ($bCreated) {
-					ConsoleMessage("Directory created: %s", $DirectoryPath);
+	try {
+		switch ($Operation) {
+			case 'A':
+			case 'M':
+				if ($DirectoryPath != '.') {
+					$bCreated = ftp_mkdir_recursive($Resource, "$FtpUrlPath/$DirectoryPath");
+					if ($bCreated) {
+						ConsoleMessage("Directory created: %s", $DirectoryPath);
+					}
 				}
-			}
-			ftp_put($Resource, $RemoteFile, $LocalFile, FTP_BINARY);
-			ConsoleMessage('Uploaded file: %s', $Filepath);
-		break;
-		
-		case 'D':
-			ftp_delete($Resource, $RemoteFile);
-			ConsoleMessage('Deleted file: %s', $Filepath);
-		break;
-
-		default:
-			trigger_error("Unknown operation '$Operation'.");
+				ftp_put($Resource, $RemoteFile, $LocalFile, FTP_BINARY);
+				ConsoleMessage('Uploaded file: %s', $Filepath);
 			break;
+			
+			case 'D':
+				ftp_delete($Resource, $RemoteFile);
+				ConsoleMessage('Deleted file: %s', $Filepath);
+			break;
+
+			default:
+				trigger_error("Unknown operation '$Operation'.");
+				break;
+		}
+	} catch (Exception $Ex) {
+	 	ConsoleMessage($Ex->GetMessage());
+	 	if (!$Silent) throw $Ex;
 	}
-	// } catch (Exception $Ex) {
-	// 	ConsoleMessage($Ex->GetMessage());
-	// }
 }
 
 ConsoleMessage("Uploading .git-ftp.log files.");
@@ -287,6 +291,14 @@ function d() {
 
 function ftp_mkdir_recursive($Resource, $Directory) {
 	$List = ftp_nlist($Resource, $Directory);
+	if ($List !== FALSE) {
+		try {
+			ftp_chdir($Resource, $Directory);
+		} catch (Exception $Exception) {
+			$List = FALSE;
+		}
+		ftp_chdir($Resource, '/');
+	}
 	if ($List !== FALSE) {
 		return;
 	}
