@@ -308,6 +308,7 @@ function ftp_mkdir_recursive($Resource, $Directory) {
 	$DirectoryParts = explode('/', $Directory);
 	$Path = $DirectoryParts[0];
 
+	$Created = FALSE;
 	for ($Count = count($DirectoryParts), $i = 1; $i < $Count; $i++) {
 		$Path .= '/' . $DirectoryParts[$i];
 		$List = ftp_nlist($Resource, $Path);
@@ -315,12 +316,12 @@ function ftp_mkdir_recursive($Resource, $Directory) {
 			try {
 				$Created = ftp_mkdir($Resource, $Path);	
 			} catch (Exception $Ex) {
-				trigger_error("Cannot create directory '$Path': " . $Ex->GetMessage(), E_USER_ERROR);
 			}
 		}
 	}
 
-	if (isset($Created)) {
-		return (bool) $Created;
+	if (!$Created) {
+		trigger_error("Cannot create directory '$Directory': " . $Ex->GetMessage(), E_USER_ERROR);	
 	}
+	return TRUE;
 }
