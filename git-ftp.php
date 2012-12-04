@@ -1,11 +1,12 @@
 <?php
 /**
- * Version 1.1.3
+ * Version 1.1.4
  * Changelog:
  * 1.0.0 - First release
  * 1.1.0 - Added submodule support
  * 1.1.2 - Added silent option
  * 1.1.3 - Fixed ftp_mkdir_recursive() function
+ * 1.1.4 - Option active mode
  */
 
 error_reporting(-1);
@@ -17,7 +18,7 @@ set_error_handler('ErrorHandler', -1);
 set_exception_handler('ErrorHandler');
 
 // x: - requred, x:: - optional
-$Options = getopt('u:p:l:r::s::');
+$Options = getopt('u:p:l:r::s::a::');
 $Url = GetValue('l', $Options);
 $components = parse_url($Url);
 $FtpUser = $Options['u'];
@@ -28,6 +29,7 @@ $FtpUrlPath = rtrim($FtpUrlPath, '/');
 $SecureConnection = (GetValue('scheme', $components) == 'sftp');
 $Repository = GetValue('r', $Options);
 $Silent = array_key_exists('s', $Options);
+$ActiveMode = array_key_exists('a', $Options);
 if (!$Repository) $Repository = getcwd();
 $Repository = rtrim($Repository, '/');
 if (!file_exists("$Repository/.git")) {
@@ -50,8 +52,9 @@ if (!$Resource) throw new Exception('Failed to connect.');
 
 
 $Login = ftp_login($Resource, $FtpUser, $FtpPassword);
-if (!ftp_pasv($Resource, TRUE)) throw new Exception("Failed to turn passive mode on.");
-
+if (!$ActiveMode) {
+	if (!ftp_pasv($Resource, TRUE)) throw new Exception("Failed to turn passive mode on.");
+}
 $DirectoryList = ftp_nlist($Resource, $FtpUrlPath);
 if ($DirectoryList === FALSE) {
 	ConsoleMessage("Directory '%s' does not exists, creating...", $FtpUrlPath);
