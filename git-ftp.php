@@ -312,7 +312,11 @@ function ftp_mkdir_recursive($Resource, $Directory) {
 		$Path .= '/' . $DirectoryParts[$i];
 		$List = ftp_nlist($Resource, $Path);
 		if ($List == FALSE) {
-			$Created = ftp_mkdir($Resource, $Path);
+			try {
+				$Created = ftp_mkdir($Resource, $Path);	
+			} catch (Exception $Ex) {
+				trigger_error("Cannot create directory '$Path': " . $Ex->GetMessage(), E_USER_ERROR);
+			}
 		}
 	}
 
