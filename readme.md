@@ -5,7 +5,7 @@ Script written in PHP.
 
 USAGE
 -----
-php -q git-ftp.php -uUSER -pPASSWORD -l=FTP_URL [-r=REPOSITORY] [-s] [-a]  
+php -q git-ftp.php -uUSER -pPASSWORD -l=FTP_URL [-r=REPOSITORY] [-s] [-a] [-d]
 options:  
 -u  username for ftp account (login)  
 -p  password for ftp account  
@@ -13,6 +13,7 @@ options:
 -r  path to git repository (default: current working directory)  
 -s  silent mode (script doesn't stop if error occurs)  
 -a  active mode (default: passive mode)
+-d  upload if working directory is dirty (files changed, but not committed)
 
 EXAMPLES
 --------

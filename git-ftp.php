@@ -7,6 +7,7 @@
  * 1.1.2 - Added silent option
  * 1.1.3 - Fixed ftp_mkdir_recursive() function
  * 1.1.4 - Option active mode
+ * 1.1.5 - Option dirty mode
  */
 
 error_reporting(-1);
@@ -18,7 +19,7 @@ set_error_handler('ErrorHandler', -1);
 set_exception_handler('ErrorHandler');
 
 // x: - requred, x:: - optional
-$Options = getopt('u:p:l:r::s::a::');
+$Options = getopt('u:p:l:r::s::a::d::');
 $Url = GetValue('l', $Options);
 $components = parse_url($Url);
 $FtpUser = $Options['u'];
@@ -30,16 +31,19 @@ $SecureConnection = (GetValue('scheme', $components) == 'sftp');
 $Repository = GetValue('r', $Options);
 $Silent = array_key_exists('s', $Options);
 $ActiveMode = array_key_exists('a', $Options);
+$DirtyMode = array_key_exists('d', $Options);
 if (!$Repository) $Repository = getcwd();
 $Repository = rtrim($Repository, '/');
 if (!file_exists("$Repository/.git")) {
 	trigger_error("Looks like '$Repository' is not git repository.");
 }
 
-$Result = exec("git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" status", $Output, $ReturnVar);
-if ($Result != 'nothing to commit (working directory clean)') {
-	ConsoleMessage('ERROR: Working directory is dirty.');
-	exit(1);
+if ($DirtyMode == FALSE) {
+	$Result = exec("git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" status", $Output, $ReturnVar);
+	if ($Result != 'nothing to commit (working directory clean)') {
+		ConsoleMessage('ERROR: Working directory is dirty.');
+		exit(1);
+	}
 }
 
 ConsoleMessage('Connecting to ftp: %s', $FtpHost);
@@ -176,7 +180,7 @@ function GetDiffFiles($Repository, $ServerLastCommitHash) {
 			return 'A ' . $Filepath;
 		}, $UploadList);
 	} else {
-		$Command = "git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" diff --name-status $ServerLastCommitHash";
+		$Command = "git --git-dir=\"$Repository/.git\" --work-tree=\"$Repository\" diff --name-status {$ServerLastCommitHash}..HEAD";
 		exec($Command, $UploadList, $ReturnVar);
 	}
 	return $UploadList;
